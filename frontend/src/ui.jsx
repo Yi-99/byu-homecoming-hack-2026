@@ -1,4 +1,3 @@
-cat > src/ui.jsx <<'EOF'
 export const primaryButton =
   "mt-7 cursor-pointer rounded-none bg-marker px-5 py-3 font-[family-name:var(--font-heading)] text-[1.05rem] font-semibold tracking-wide text-on-marker transition hover:brightness-110 active:brightness-95 disabled:cursor-progress disabled:opacity-70";
 export const quietButton =
@@ -63,4 +62,3 @@ export function Paragraphs({ text }) {
     <p key={i} className="mb-3.5 max-w-[38rem]"><Rich text={p} /></p>
   ));
 }
-EOF
