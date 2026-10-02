@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { PROVIDERS, asJson, post, storeLlm, storedLlm } from "./lib.js";
-import { ErrorNote, Step, quietButton } from "./ui.jsx";
+import { ErrorNote, StepHead, btn, input, needClass } from "./ui.jsx";
 
-const field = "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm placeholder:text-muted";
-
-function ProviderRow({ id, label, llm = {}, onConnect, onModel, onRemove }) {
+function ProviderRow({ id, label, llm = {}, nudge, onConnect, onModel, onRemove }) {
   const [draft, setDraft] = useState("");
   const connected = llm.status === "connected";
   const connecting = llm.status === "connecting";
+  const status = connected ? "Connected" : connecting ? "Connecting…" : "Not connected";
 
   function submit(event) {
     event.preventDefault();
@@ -15,40 +14,44 @@ function ProviderRow({ id, label, llm = {}, onConnect, onModel, onRemove }) {
   }
 
   return (
-    <li className="border-t border-line py-4 first:border-t-0 first:pt-0 last:pb-0">
-      <form onSubmit={submit} className="grid gap-2 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-center">
-        <label htmlFor={`llm-${id}`} className="text-sm font-semibold">{label}</label>
+    <li className="border-t border-divider py-4">
+      <form onSubmit={submit} className="grid items-center gap-3.5 md:grid-cols-[100px_minmax(0,1fr)_minmax(0,180px)_auto]">
+        <div className="flex flex-col gap-0.5">
+          <label htmlFor={`llm-${id}`} className="font-heading text-[19px] font-semibold">{label}</label>
+          <span className={`text-xs ${connected ? "text-ok" : "text-neutral-700"}`}>{status}</span>
+        </div>
+        <input
+          id={`llm-${id}`}
+          className={`${input} font-mono ${connected ? "" : needClass(nudge)}`}
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={`Paste your ${label} API key`}
+          value={connected ? llm.key : draft}
+          readOnly={connected}
+          onChange={(e) => setDraft(e.target.value)}
+        />
         {connected ? (
-          <select id={`llm-${id}`} className={field} value={llm.model} onChange={(e) => onModel(id, e.target.value)}>
+          <select aria-label={`${label} model`} className={`${input} animate-fade-in cursor-pointer`} value={llm.model} onChange={(e) => onModel(id, e.target.value)}>
             {llm.models.map((m) => <option key={m}>{m}</option>)}
           </select>
         ) : (
-          <input
-            id={`llm-${id}`}
-            className={`${field} font-mono`}
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={`Paste your ${label} API key`}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-          />
+          <span className="text-[13px] text-neutral-600">Connect a key to pick a model</span>
         )}
         {connected ? (
-          <button type="button" className={quietButton} onClick={() => { setDraft(""); onRemove(id); }}>Remove key</button>
+          <button type="button" className={`${btn} h-9 min-w-[110px]`} onClick={() => { setDraft(""); onRemove(id); }}>Remove key</button>
         ) : (
-          <button type="submit" className={quietButton} disabled={connecting} aria-busy={connecting}>
+          <button type="submit" className={`${btn} h-9 min-w-[110px]`} disabled={connecting} aria-busy={connecting}>
             {connecting ? "Connecting…" : "Connect"}
           </button>
         )}
       </form>
-      {connected && <p className="mt-1.5 text-sm font-semibold text-ok sm:pl-[7.5rem]">Connected. Pick the model to use.</p>}
-      {llm.error && <div className="sm:pl-[7.5rem]"><ErrorNote>{llm.error}</ErrorNote></div>}
+      {llm.error && <ErrorNote className="mt-3 md:ml-[114px]">{llm.error}</ErrorNote>}
     </li>
   );
 }
 
-export default function Providers({ llms, setLlms }) {
+export default function Providers({ llms, setLlms, nudge }) {
   const patch = (id, change) => setLlms((all) => ({ ...all, [id]: { ...all[id], ...change } }));
 
   async function connect(id, key, preferred) {
@@ -82,18 +85,18 @@ export default function Providers({ llms, setLlms }) {
   }, []);
 
   return (
-    <Step n={1} title="Connect the models you want to use">
-      <p className="mb-5 text-sm text-muted">
-        This app has no model access of its own. Connect at least one provider with your own API key, or two or three to compare their questions side by side.
-      </p>
-      <ul>
+    <>
+      <StepHead n={1} total={5} title="Connect models">
+        This app has no model access of its own. Paste a key for one or more providers, then pick a model for each. Every connected model writes its own version of the question.
+      </StepHead>
+      <ul className="flex max-w-[960px] flex-col">
         {PROVIDERS.map((p) => (
-          <ProviderRow key={p.id} {...p} llm={llms[p.id]} onConnect={connect} onModel={pickModel} onRemove={remove} />
+          <ProviderRow key={p.id} {...p} llm={llms[p.id]} nudge={nudge} onConnect={connect} onModel={pickModel} onRemove={remove} />
         ))}
       </ul>
-      <p className="mt-5 text-sm text-muted">
-        Keys stay in this browser tab until you close it. Each request forwards your key to that provider and nowhere else; the server does not store or log it.
+      <p className="m-0 max-w-[640px] text-[13px] leading-relaxed text-neutral-700">
+        Keys stay in this browser tab and are removed when you close it. The server forwards each key to its provider only and never stores or logs it.
       </p>
-    </Step>
+    </>
   );
 }

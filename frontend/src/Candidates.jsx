@@ -1,69 +1,72 @@
-import { useState } from "react";
 import { MAX_FILES, MAX_SNIPPETS, labelOf } from "./lib.js";
-import { Code, ErrorNote, Note, Step, Tags, primaryButton } from "./ui.jsx";
+import { Check, IconButton, Note, StepHead, Tag, Tags, kicker, needClass } from "./ui.jsx";
 
 const n = (x) => x.toLocaleString();
 
-export default function Candidates({ analysis, busy, models, onGenerate, ...rest }) {
+function Stat({ label, value }) {
+  return (
+    <div className="flex flex-col gap-0.5 px-5 py-4">
+      <span className="text-xs text-neutral-700">{label}</span>
+      <span className="font-heading text-[26px] font-semibold">{value}</span>
+    </div>
+  );
+}
+
+export default function Candidates({ analysis, checked, setChecked, nudge, onViewCode }) {
   const { stats, candidates, note, ranked_by: ranker } = analysis;
-  const [checked, setChecked] = useState(candidates.slice(0, 1).map((c) => c.id));
-  const [localError, setLocalError] = useState("");
-
-  function toggle(id) {
-    setChecked((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-  }
-
-  function submit(event) {
-    event.preventDefault();
-    setLocalError("");
-    if (!models) return setLocalError("Connect at least one model with your API key in step 1.");
-    if (!checked.length) return setLocalError("Select at least one function.");
-    if (checked.length > MAX_SNIPPETS) return setLocalError(`Select up to ${MAX_SNIPPETS} functions.`);
-    onGenerate(
-      candidates
-        .filter((c) => checked.includes(c.id))
-        .map((c) => ({ path: c.path, name: c.name, code: c.code_scrubbed })),
-    );
-  }
+  const toggle = (id) => setChecked((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const count = checked.length;
+  const need = needClass(nudge);
 
   return (
-    <Step n={3} title="Approve what the models can read" {...rest}>
-      <p className="text-sm text-muted">
-        Parsed {n(stats.files)} files and found {n(stats.functions)} functions. {labelOf(ranker.provider)} ({ranker.model}) saw an outline of {n(stats.considered)} of them and picked these.
-        {stats.truncated && ` Only the first ${n(MAX_FILES)} source files were read.`}
-      </p>
+    <>
+      <StepHead n={4} total={5} title="Review the functions">
+        {labelOf(ranker.provider)} ({ranker.model}) saw an outline of {n(stats.considered)} functions and picked these. Only the function bodies you keep are sent to the models, with secrets redacted.
+      </StepHead>
+
+      <div className="grid max-w-[760px] grid-cols-3 border border-divider">
+        <Stat label="Files parsed" value={n(stats.files)} />
+        <Stat label="Functions found" value={n(stats.functions)} />
+        <Stat label="Outline tokens sent" value={n(stats.tokens_sent)} />
+      </div>
+      {stats.truncated && <p className="m-0 text-[13px] text-neutral-700">Only the first {n(MAX_FILES)} source files were read.</p>}
       {(note || !candidates.length) && (
-        <Note className="mt-4">{candidates.length ? note : `No functions matched these topics. ${note}`}</Note>
+        <Note className="m-0 max-w-[760px]">{candidates.length ? note : `No functions matched these topics. ${note}`}</Note>
       )}
 
-      <form onSubmit={submit}>
-        <ul className="mt-5 grid gap-3">
-          {candidates.map((c) => (
-            <li key={c.id} className="rounded-[10px] border border-line px-4 py-4 has-[:checked]:border-marker has-[:checked]:shadow-[inset_3px_0_0_var(--color-marker)]">
-              <label className="flex cursor-pointer items-start gap-3">
-                <input type="checkbox" className="mt-1 size-4.5 flex-none accent-marker" checked={checked.includes(c.id)} onChange={() => toggle(c.id)} />
-                <span className="min-w-0">
-                  <span className="block font-mono text-[0.95rem] font-semibold wrap-break-word">{c.name}</span>
-                  <span className="block text-[0.8rem] wrap-break-word text-muted">{c.path}, {c.loc} lines</span>
-                </span>
-              </label>
-              <p className="mt-2 text-[0.925rem]">{c.why}</p>
-              <Tags items={c.topics_matched} className="mt-2" />
-              <details className="mt-3">
-                <summary className="cursor-pointer text-sm font-semibold text-marker">See exactly what will be sent</summary>
-                <Code className="mt-2.5">{c.code_scrubbed}</Code>
-              </details>
-            </li>
-          ))}
-        </ul>
-
-        <ErrorNote>{localError}</ErrorNote>
-        {candidates.length > 0 && (
-          <button type="submit" className={primaryButton} disabled={busy} aria-busy={busy}>
-            {busy ? "Writing…" : models > 1 ? `Write the question with ${models} models` : "Write the question"}
-          </button>
-        )}
-      </form>
-    </Step>
+      {candidates.length > 0 && (
+        <div className="flex max-w-[960px] min-w-0 flex-col gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <span className={kicker}>Functions used</span>
+            <span className={`text-xs ${count > MAX_SNIPPETS ? "font-medium text-bad" : "text-neutral-700"}`}>
+              {count} of {candidates.length} selected · keep 1 to {MAX_SNIPPETS}
+            </span>
+          </div>
+          <div className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
+            {candidates.map((c) => {
+              const on = checked.includes(c.id);
+              return (
+                <div
+                  key={c.id}
+                  className={`flex min-w-0 flex-col gap-1.5 border p-4 transition-opacity ${on ? "border-solid border-divider" : "border-dashed border-divider opacity-55"} ${count ? "" : need}`}
+                >
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Check on={on} onClick={() => toggle(c.id)} label={`Use ${c.name}`} />
+                    <span className={`truncate font-mono text-sm font-semibold ${on ? "" : "line-through"}`}>{c.name}</span>
+                  </div>
+                  <span className="truncate font-mono text-xs text-neutral-700">{c.path} · {c.loc} lines</span>
+                  <span className="text-[13px] leading-snug">{c.why}</span>
+                  <Tags items={c.topics_matched} className="pt-1" />
+                  <div className="icon-row flex items-center gap-2 pt-1">
+                    <IconButton icon="code" label="See exactly what will be sent" onClick={() => onViewCode(c)} />
+                    {!on && <Tag tone="neutral">Not used</Tag>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

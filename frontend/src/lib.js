@@ -1,8 +1,9 @@
-export const TOPICS = [
-  "arrays", "hash map", "two pointers", "sliding window", "stack", "queue", "heap",
-  "linked list", "tree", "graph", "dfs", "bfs", "dynamic programming", "binary search", "trie",
-  "union-find", "greedy", "backtracking", "intervals", "sorting",
+export const TOPIC_GROUPS = [
+  ["Data structures", ["arrays", "hash map", "stack", "queue", "heap", "linked list", "tree", "graph", "trie", "union-find"]],
+  ["Algorithms", ["two pointers", "sliding window", "dfs", "bfs", "dynamic programming", "binary search", "greedy", "backtracking", "intervals", "sorting"]],
 ];
+export const TOPICS = TOPIC_GROUPS.flatMap(([, list]) => list);
+export const LEVELS = ["Foundation", "Applied", "Extended"];
 export const PROVIDERS = [
   { id: "anthropic", label: "Anthropic" },
   { id: "openai", label: "OpenAI" },

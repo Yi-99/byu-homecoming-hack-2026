@@ -1,208 +1,136 @@
-import { useEffect, useState } from "react";
-import { flushSync } from "react-dom";
-import { asJson, download, labelOf, partsOf, post, toMarkdown } from "./lib.js";
-import { Code, ErrorNote, Note, Paragraphs, Rich, Tags, quietButton } from "./ui.jsx";
+import { LEVELS, labelOf, partsOf } from "./lib.js";
+import { PartBody, Rubric, Scenario, useExport } from "./Question.jsx";
+import { ErrorNote, IconButton, StepHead, Tag, Tags, btn, kicker, needClass } from "./ui.jsx";
 
-const subhead = "mt-5 mb-1.5 font-sans text-[0.85rem] font-bold";
-const notes = "rounded-md bg-highlight px-4 py-3.5 font-sans text-[0.925rem] leading-normal";
-const COLUMNS = { 1: "max-w-[44rem]", 2: "lg:grid-cols-2", 3: "lg:grid-cols-2 xl:grid-cols-3" };
-// every column spans the same 6 rows so Part 1 lines up with Part 1 across models
-const column =
-  "row-span-6 mb-6 grid min-w-0 grid-rows-subgrid rounded-[3px] border border-line bg-paper px-5 py-6 font-serif text-[1.05rem] leading-[1.65] shadow-[5px_6px_0_var(--color-line)]";
+// columns share one grid so Part 1 lines up with Part 1 across models
+const ROWS = 6;
+const cell = (i, row, on) =>
+  `flex min-w-0 flex-col gap-2 p-[18px] transition-colors ${i ? "border-l border-divider" : ""} ${row ? "border-t border-divider" : ""} ${on ? "bg-accent-100" : ""}`;
 
-function Part({ part, index, withNotes }) {
-  return (
-    <section className="mt-7 min-w-0 border-t-2 border-ink pt-6">
-      <h4 className="mb-3 font-sans text-lg font-bold">Part {index + 1}</h4>
-      <Paragraphs text={part.prompt} />
-      <Code>{part.signature}</Code>
-
-      <h5 className={`${subhead} text-muted`}>Examples</h5>
-      {part.examples.map((e, i) => (
-        <div key={i} className="mb-3 border-l-[3px] border-line px-4 py-3 text-[0.95rem] wrap-break-word">
-          <div><b className="font-sans text-[0.85rem]">Input: </b><code className="font-mono text-[0.9em]">{e.input}</code></div>
-          <div><b className="font-sans text-[0.85rem]">Output: </b><code className="font-mono text-[0.9em]">{e.output}</code></div>
-          <div><b className="font-sans text-[0.85rem]">Why: </b><Rich text={e.explanation} /></div>
-        </div>
-      ))}
-
-      <h5 className={`${subhead} text-muted`}>Constraints</h5>
-      <ul className="list-disc pl-5">
-        {part.constraints.map((c, i) => <li key={i}><Rich text={c} /></li>)}
-      </ul>
-
-      <details open={withNotes} className={`mt-5 ${notes} ${withNotes ? "" : "print:hidden"}`}>
-        <summary className="cursor-pointer font-semibold">Interviewer notes</summary>
-        <h5 className={subhead}>Target complexity</h5>
-        <p><Rich text={part.target_complexity} /></p>
-        <h5 className={subhead}>Intended approach</h5>
-        <Paragraphs text={part.approach} />
-        <h5 className={subhead}>Hints, gentle to direct</h5>
-        <ol className="list-decimal pl-5">
-          {part.hints.map((x, i) => <li key={i}><Rich text={x} /></li>)}
-        </ol>
-      </details>
-    </section>
-  );
-}
-
-function Column({ id, result, hideInPrint, notion, onRetry, onSave, onPrint, onConnectNotion }) {
-  const [note, setNote] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [withNotes, setWithNotes] = useState(false);
-  const [sending, setSending] = useState(false);
-  const { status, model, question, usage, seconds, error } = result;
+function Header({ id, i, result, on, saveState, notion, withNotes, nudge, onChoose, onRetry, onSave, onConnectNotion }) {
+  const { status, model, question, usage, seconds } = result;
   const byline = `${labelOf(id)} ${model}`;
-  const version = withNotes ? "with interviewer notes" : "candidate version";
-  const markdown = () => toMarkdown(question, withNotes, byline);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(markdown());
-      setNote(`Copied, ${version}.`);
-    } catch {
-      setNote("Copy was blocked by the browser. Select the text and copy it manually.");
-    }
-  }
-
-  async function sendToNotion() {
-    if (!notion) return onConnectNotion();
-    setSending(true);
-    try {
-      const { url } = await post("/api/notion/pages", asJson({ token: notion.token, markdown: markdown() }));
-      setNote(
-        <>
-          Sent to Notion, {version}.{" "}
-          <a className="font-semibold underline" href={url} target="_blank" rel="noreferrer">Open the page</a>
-        </>,
-      );
-    } catch (e) {
-      setNote(e.message);
-    } finally {
-      setSending(false);
-    }
-  }
+  const exp = useExport({ question, byline, withNotes, notion, onConnectNotion });
+  const done = status === "done";
+  const saveLabel = saveState === "same" ? "Saved" : saveState === "changed" ? "Overwrite saved" : "Save";
 
   return (
-    <article
-      className={`${column} print:mb-0 print:block print:border-0 print:p-0 print:shadow-none ${hideInPrint ? "print:hidden" : ""}`}
-      aria-busy={status === "loading"}
+    <div
+      className={`${cell(i, 0, on)} ${done ? "cursor-pointer" : ""} ${done && nudge ? needClass(nudge) : ""}`}
+      onClick={() => done && onChoose(id)}
       aria-label={`Question from ${byline}`}
     >
-      <header className="font-sans print:hidden">
-        <p className="text-lg leading-tight font-bold">{labelOf(id)}</p>
-        <p className="font-mono text-[0.8rem] wrap-break-word text-muted">{model}</p>
-        {status === "done" && (
-          <>
-            <p className="mt-1 text-[0.8rem] text-muted">
-              {seconds} seconds, {usage.input_tokens.toLocaleString()} tokens in, {usage.output_tokens.toLocaleString()} tokens out
-            </p>
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-semibold">
-              <input type="checkbox" className="size-4 accent-marker" checked={withNotes} onChange={(e) => setWithNotes(e.target.checked)} />
-              Include interviewer notes
-            </label>
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <button type="button" className={quietButton} onClick={copy}>Copy</button>
-              <button type="button" className={quietButton} onClick={() => download(question.title, markdown())}>Download Markdown</button>
-              <button type="button" className={quietButton} onClick={() => onPrint(id)}>Save as PDF</button>
-              <button type="button" className={quietButton} onClick={sendToNotion} disabled={sending} aria-busy={sending}>
-                {!notion ? "Connect Notion" : sending ? "Sending…" : "Send to Notion"}
-              </button>
-              {onSave && (
-                <button
-                  type="button"
-                  className={quietButton}
-                  disabled={saved}
-                  onClick={() => { onSave(id, result); setSaved(true); }}
-                >
-                  {saved ? "Saved" : "Save"}
-                </button>
-              )}
-            </div>
-            <p className="mt-1.5 min-h-5 text-sm text-muted" role="status">{note}</p>
-          </>
-        )}
-      </header>
-
-      {status === "loading" && (
-        <p className="row-span-5 mt-6 font-sans text-[0.95rem] text-muted">Writing the question. This takes about a minute…</p>
-      )}
-
-      {status === "error" && (
-        <div className="row-span-5 font-sans">
-          <ErrorNote>{error}</ErrorNote>
-          <button type="button" className={`${quietButton} mt-4`} onClick={() => onRetry(id)}>Try {labelOf(id)} again</button>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="font-heading text-[19px] font-semibold">{labelOf(id)}</span>
+          <span className="font-mono text-xs break-words text-neutral-700">
+            {model}
+            {done && ` · ${seconds}s · ${(usage.input_tokens + usage.output_tokens).toLocaleString()} tokens`}
+          </span>
         </div>
-      )}
-
-      {status === "done" && (
-        <>
-          <div className="mt-5 min-w-0">
-            <h3 className="mb-3 font-sans text-[1.5rem] leading-[1.15] font-extrabold tracking-tight text-balance">{question.title}</h3>
-            <Tags items={question.tags} className={`mb-4 ${withNotes ? "" : "print:hidden"}`} />
-            <Paragraphs text={question.story} />
-          </div>
-          {partsOf(question).map((part, i) => <Part key={i} part={part} index={i} withNotes={withNotes} />)}
-          <details open={withNotes} className={`mt-7 self-start ${notes} ${withNotes ? "" : "print:hidden"}`}>
-            <summary className="cursor-pointer font-semibold">What a strong candidate shows</summary>
-            <ol className="mt-2 list-decimal pl-5">
-              {question.rubric.map((x, i) => <li key={i}><Rich text={x} /></li>)}
-            </ol>
-          </details>
-        </>
-      )}
-    </article>
+        {on && <Tag className="mt-1">Selected</Tag>}
+      </div>
+      <div className="icon-row flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <IconButton icon="refresh" label={status === "error" ? `Try ${labelOf(id)} again` : "Regenerate"} onClick={() => onRetry(id)} disabled={status === "loading"} />
+        {done && exp.buttons}
+        {done && (
+          <IconButton icon="bookmark" label={saveLabel} filled={saveState === "same"} disabled={saveState === "same"} onClick={() => onSave(id)} end />
+        )}
+      </div>
+      <p className="m-0 text-[13px] text-neutral-700" role="status">{done && exp.note}</p>
+    </div>
   );
 }
 
-export default function Compare({ results, busy, notion, onRegenerate, onRetry, onSave, onClose, onConnectNotion, ...rest }) {
-  const [printing, setPrinting] = useState(null);
+export default function Compare({ results, chosen, onChoose, withNotes, setWithNotes, notion, busy, nudge, saveState, onRegenerate, onRetry, onSave, onConnectNotion }) {
   const ids = Object.keys(results);
-  const many = ids.length > 1;
 
-  useEffect(() => {
-    const done = () => setPrinting(null);
-    addEventListener("afterprint", done);
-    return () => removeEventListener("afterprint", done);
-  }, []);
-
-  // the other columns must be hidden before the print dialog snapshots the page
-  function print(id) {
-    flushSync(() => setPrinting(id));
-    window.print();
-  }
+  const rows = (id, i) => {
+    const r = results[id];
+    const on = chosen === id;
+    if (r.status === "loading") {
+      return [
+        <div key="l" className={`${cell(i, 1, on)} row-span-5`}>
+          <p className="m-0 text-sm text-neutral-700">Writing the question. This takes about a minute…</p>
+        </div>,
+      ];
+    }
+    if (r.status === "error") {
+      return [
+        <div key="e" className={`${cell(i, 1, on)} row-span-5`}>
+          <ErrorNote>{r.error}</ErrorNote>
+          <button type="button" className={`${btn} self-start`} onClick={() => onRetry(id)}>Try {labelOf(id)} again</button>
+        </div>,
+      ];
+    }
+    const q = r.question;
+    return [
+      <div key="t" className={cell(i, 1, on)}>
+        <h3 className="m-0 text-[22px] leading-tight text-balance">{q.title}</h3>
+        <Tags items={q.tags} />
+        <Scenario text={q.story} />
+      </div>,
+      ...partsOf(q).map((part, n) => (
+        <div key={n} className={cell(i, 2 + n, on)}>
+          <span className={kicker}>Part {n + 1} · {LEVELS[n]}</span>
+          <PartBody part={part} withNotes={withNotes} />
+        </div>
+      )),
+      <div key="r" className={cell(i, 5, on)}>
+        <Rubric question={q} open={withNotes} />
+      </div>,
+    ];
+  };
 
   return (
-    <section className="mx-auto max-w-[100rem] scroll-mt-4 px-4 pb-16 md:px-6 md:pb-24 print:p-0" aria-labelledby="step4-title" {...rest}>
-      <h2 id="step4-title" className="mb-5 flex items-baseline gap-3 text-xl font-bold tracking-tight print:hidden">
-        <span className="size-7 flex-none rounded-full bg-ink text-center text-sm leading-7 text-surface">4</span>
-        {onClose ? "Saved question" : many ? "Compare the questions" : "Review the question"}
-      </h2>
-      <div className="mb-6 flex max-w-[44rem] flex-col items-start gap-4 print:hidden">
-        <Note>Example outputs were worked out by each model, not run as code. Check them before you use a question in an interview.</Note>
-        {onClose ? (
-          <button type="button" className={quietButton} onClick={onClose}>Close saved question</button>
-        ) : (
-          <button type="button" className={quietButton} onClick={onRegenerate} disabled={busy} aria-busy={busy}>
-            {many ? "Write new versions with every model" : "Write another version"}
-          </button>
-        )}
+    <>
+      <div className="flex flex-wrap items-end gap-5">
+        <div className="flex-[1_1_420px]">
+          <StepHead n={5} total={5} title="Choose the question">
+            Each connected model wrote a three-part question from the functions you kept. Click a version to select it, regenerate any you don't like, then approve.
+          </StepHead>
+        </div>
+        <div className="icon-row flex items-center gap-4">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-accent" checked={withNotes} onChange={(e) => setWithNotes(e.target.checked)} />
+            Include interviewer notes
+          </label>
+          <IconButton icon="refresh" size={18} label="Regenerate all" onClick={onRegenerate} disabled={busy} end />
+        </div>
       </div>
-      <div className={`grid grid-cols-[minmax(0,1fr)] gap-x-5 print:block print:max-w-none ${COLUMNS[ids.length]}`}>
-        {ids.map((id) => (
-          <Column
-            key={id + (results[id].question?.title ?? "")}
-            id={id}
-            result={results[id]}
-            hideInPrint={printing !== null && printing !== id}
-            notion={notion}
-            onRetry={onRetry}
-            onSave={onSave}
-            onPrint={print}
-            onConnectNotion={onConnectNotion}
-          />
-        ))}
+      <div className="flex flex-col gap-2.5">
+        <div className="overflow-x-auto">
+          <div
+            className="grid border border-divider"
+            style={{
+              gridTemplateColumns: `repeat(${ids.length}, minmax(0,1fr))`,
+              gridTemplateRows: `repeat(${ROWS}, auto)`,
+              gridAutoFlow: "column",
+              minWidth: ids.length > 1 ? ids.length * 320 : undefined,
+            }}
+          >
+            {ids.map((id, i) => [
+              <Header
+                key={`h-${id}`}
+                id={id}
+                i={i}
+                result={results[id]}
+                on={chosen === id}
+                saveState={saveState(id)}
+                notion={notion}
+                withNotes={withNotes}
+                nudge={chosen ? 0 : nudge}
+                onChoose={onChoose}
+                onRetry={onRetry}
+                onSave={onSave}
+                onConnectNotion={onConnectNotion}
+              />,
+              ...rows(id, i),
+            ])}
+          </div>
+        </div>
+        <span className="text-[13px] text-neutral-700">Example outputs are worked out by each model, not executed. Check them before you use a question in an interview.</span>
       </div>
-    </section>
+    </>
   );
 }
