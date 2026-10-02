@@ -1,0 +1,12 @@
+[project]
+name = "homegrown-backend"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=1.11.0",
+    "fastapi>=0.142.2",
+    "httpx>=0.28.1",
+    "python-multipart>=0.0.32",
+    "tree-sitter-language-pack>=1.20.0",
+    "uvicorn[standard]>=0.54.0",
+]

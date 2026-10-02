@@ -1,0 +1,39 @@
+version: "3"
+
+vars:
+  IMAGE: homegrown-backend
+  PORT: 8000
+
+tasks:
+  default:
+    desc: List tasks
+    cmds:
+      - task --list
+    silent: true
+
+  dev:
+    desc: Run the backend locally with reload
+    dir: backend
+    cmds:
+      - uv run uvicorn app.main:app --port {{.PORT}} --reload
+
+  build:
+    desc: Build the backend Docker image
+    cmds:
+      - docker build -t {{.IMAGE}} backend
+
+  up:
+    desc: Build and run the backend container in the background
+    deps: [build]
+    cmds:
+      - docker run --rm -d --name {{.IMAGE}} -p 127.0.0.1:{{.PORT}}:8000 {{.IMAGE}}
+
+  logs:
+    desc: Follow the backend container logs
+    cmds:
+      - docker logs -f {{.IMAGE}}
+
+  down:
+    desc: Stop the backend container
+    cmds:
+      - docker stop {{.IMAGE}}
