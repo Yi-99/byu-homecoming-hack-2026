@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { labelOf, partsOf, toMarkdown } from "./lib.js";
+import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
+import { asJson, download, labelOf, partsOf, post, toMarkdown } from "./lib.js";
 import { Code, ErrorNote, Note, Paragraphs, Rich, Tags, quietButton } from "./ui.jsx";
 
 const subhead = "mt-5 mb-1.5 font-sans text-[0.85rem] font-bold";
@@ -9,7 +10,7 @@ const COLUMNS = { 1: "max-w-[44rem]", 2: "lg:grid-cols-2", 3: "lg:grid-cols-2 xl
 const column =
   "row-span-6 mb-6 grid min-w-0 grid-rows-subgrid rounded-[3px] border border-line bg-paper px-5 py-6 font-serif text-[1.05rem] leading-[1.65] shadow-[5px_6px_0_var(--color-line)]";
 
-function Part({ part, index }) {
+function Part({ part, index, withNotes }) {
   return (
     <section className="mt-7 min-w-0 border-t-2 border-ink pt-6">
       <h4 className="mb-3 font-sans text-lg font-bold">Part {index + 1}</h4>
@@ -30,7 +31,7 @@ function Part({ part, index }) {
         {part.constraints.map((c, i) => <li key={i}><Rich text={c} /></li>)}
       </ul>
 
-      <details className={`mt-5 ${notes}`}>
+      <details open={withNotes} className={`mt-5 ${notes} ${withNotes ? "" : "print:hidden"}`}>
         <summary className="cursor-pointer font-semibold">Interviewer notes</summary>
         <h5 className={subhead}>Target complexity</h5>
         <p><Rich text={part.target_complexity} /></p>
@@ -45,24 +46,50 @@ function Part({ part, index }) {
   );
 }
 
-function Column({ id, result, onRetry, onSave }) {
-  const [copied, setCopied] = useState("");
+function Column({ id, result, hideInPrint, notion, onRetry, onSave, onPrint, onConnectNotion }) {
+  const [note, setNote] = useState("");
   const [saved, setSaved] = useState(false);
+  const [withNotes, setWithNotes] = useState(false);
+  const [sending, setSending] = useState(false);
   const { status, model, question, usage, seconds, error } = result;
   const byline = `${labelOf(id)} ${model}`;
+  const version = withNotes ? "with interviewer notes" : "candidate version";
+  const markdown = () => toMarkdown(question, withNotes, byline);
 
-  async function copy(withNotes) {
+  async function copy() {
     try {
-      await navigator.clipboard.writeText(toMarkdown(question, withNotes, byline));
-      setCopied(withNotes ? "Copied with interviewer notes." : "Copied candidate version.");
+      await navigator.clipboard.writeText(markdown());
+      setNote(`Copied, ${version}.`);
     } catch {
-      setCopied("Copy was blocked by the browser. Select the text and copy it manually.");
+      setNote("Copy was blocked by the browser. Select the text and copy it manually.");
+    }
+  }
+
+  async function sendToNotion() {
+    if (!notion) return onConnectNotion();
+    setSending(true);
+    try {
+      const { url } = await post("/api/notion/pages", asJson({ token: notion.token, markdown: markdown() }));
+      setNote(
+        <>
+          Sent to Notion, {version}.{" "}
+          <a className="font-semibold underline" href={url} target="_blank" rel="noreferrer">Open the page</a>
+        </>,
+      );
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      setSending(false);
     }
   }
 
   return (
-    <article className={column} aria-busy={status === "loading"} aria-label={`Question from ${byline}`}>
-      <header className="font-sans">
+    <article
+      className={`${column} print:mb-0 print:block print:border-0 print:p-0 print:shadow-none ${hideInPrint ? "print:hidden" : ""}`}
+      aria-busy={status === "loading"}
+      aria-label={`Question from ${byline}`}
+    >
+      <header className="font-sans print:hidden">
         <p className="text-lg leading-tight font-bold">{labelOf(id)}</p>
         <p className="font-mono text-[0.8rem] wrap-break-word text-muted">{model}</p>
         {status === "done" && (
@@ -70,9 +97,17 @@ function Column({ id, result, onRetry, onSave }) {
             <p className="mt-1 text-[0.8rem] text-muted">
               {seconds} seconds, {usage.input_tokens.toLocaleString()} tokens in, {usage.output_tokens.toLocaleString()} tokens out
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button type="button" className={quietButton} onClick={() => copy(false)}>Copy candidate version</button>
-              <button type="button" className={quietButton} onClick={() => copy(true)}>Copy with interviewer notes</button>
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" className="size-4 accent-marker" checked={withNotes} onChange={(e) => setWithNotes(e.target.checked)} />
+              Include interviewer notes
+            </label>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <button type="button" className={quietButton} onClick={copy}>Copy</button>
+              <button type="button" className={quietButton} onClick={() => download(question.title, markdown())}>Download Markdown</button>
+              <button type="button" className={quietButton} onClick={() => onPrint(id)}>Save as PDF</button>
+              <button type="button" className={quietButton} onClick={sendToNotion} disabled={sending} aria-busy={sending}>
+                {!notion ? "Connect Notion" : sending ? "Sending…" : "Send to Notion"}
+              </button>
               {onSave && (
                 <button
                   type="button"
@@ -84,7 +119,7 @@ function Column({ id, result, onRetry, onSave }) {
                 </button>
               )}
             </div>
-            <p className="mt-1.5 min-h-5 text-sm text-muted" role="status">{copied}</p>
+            <p className="mt-1.5 min-h-5 text-sm text-muted" role="status">{note}</p>
           </>
         )}
       </header>
@@ -104,11 +139,11 @@ function Column({ id, result, onRetry, onSave }) {
         <>
           <div className="mt-5 min-w-0">
             <h3 className="mb-3 font-sans text-[1.5rem] leading-[1.15] font-extrabold tracking-tight text-balance">{question.title}</h3>
-            <Tags items={question.tags} className="mb-4" />
+            <Tags items={question.tags} className={`mb-4 ${withNotes ? "" : "print:hidden"}`} />
             <Paragraphs text={question.story} />
           </div>
-          {partsOf(question).map((part, i) => <Part key={i} part={part} index={i} />)}
-          <details className={`mt-7 self-start ${notes}`}>
+          {partsOf(question).map((part, i) => <Part key={i} part={part} index={i} withNotes={withNotes} />)}
+          <details open={withNotes} className={`mt-7 self-start ${notes} ${withNotes ? "" : "print:hidden"}`}>
             <summary className="cursor-pointer font-semibold">What a strong candidate shows</summary>
             <ol className="mt-2 list-decimal pl-5">
               {question.rubric.map((x, i) => <li key={i}><Rich text={x} /></li>)}
@@ -120,17 +155,30 @@ function Column({ id, result, onRetry, onSave }) {
   );
 }
 
-export default function Compare({ results, busy, onRegenerate, onRetry, onSave, onClose, ...rest }) {
+export default function Compare({ results, busy, notion, onRegenerate, onRetry, onSave, onClose, onConnectNotion, ...rest }) {
+  const [printing, setPrinting] = useState(null);
   const ids = Object.keys(results);
   const many = ids.length > 1;
 
+  useEffect(() => {
+    const done = () => setPrinting(null);
+    addEventListener("afterprint", done);
+    return () => removeEventListener("afterprint", done);
+  }, []);
+
+  // the other columns must be hidden before the print dialog snapshots the page
+  function print(id) {
+    flushSync(() => setPrinting(id));
+    window.print();
+  }
+
   return (
-    <section className="mx-auto max-w-[100rem] scroll-mt-4 px-4 pb-16 md:px-6 md:pb-24" aria-labelledby="step4-title" {...rest}>
-      <h2 id="step4-title" className="mb-5 flex items-baseline gap-3 text-xl font-bold tracking-tight">
+    <section className="mx-auto max-w-[100rem] scroll-mt-4 px-4 pb-16 md:px-6 md:pb-24 print:p-0" aria-labelledby="step4-title" {...rest}>
+      <h2 id="step4-title" className="mb-5 flex items-baseline gap-3 text-xl font-bold tracking-tight print:hidden">
         <span className="size-7 flex-none rounded-full bg-ink text-center text-sm leading-7 text-surface">4</span>
         {onClose ? "Saved question" : many ? "Compare the questions" : "Review the question"}
       </h2>
-      <div className="mb-6 flex max-w-[44rem] flex-col items-start gap-4">
+      <div className="mb-6 flex max-w-[44rem] flex-col items-start gap-4 print:hidden">
         <Note>Example outputs were worked out by each model, not run as code. Check them before you use a question in an interview.</Note>
         {onClose ? (
           <button type="button" className={quietButton} onClick={onClose}>Close saved question</button>
@@ -140,8 +188,20 @@ export default function Compare({ results, busy, onRegenerate, onRetry, onSave, 
           </button>
         )}
       </div>
-      <div className={`grid grid-cols-[minmax(0,1fr)] gap-x-5 ${COLUMNS[ids.length]}`}>
-        {ids.map((id) => <Column key={id + (results[id].question?.title ?? "")} id={id} result={results[id]} onRetry={onRetry} onSave={onSave} />)}
+      <div className={`grid grid-cols-[minmax(0,1fr)] gap-x-5 print:block print:max-w-none ${COLUMNS[ids.length]}`}>
+        {ids.map((id) => (
+          <Column
+            key={id + (results[id].question?.title ?? "")}
+            id={id}
+            result={results[id]}
+            hideInPrint={printing !== null && printing !== id}
+            notion={notion}
+            onRetry={onRetry}
+            onSave={onSave}
+            onPrint={print}
+            onConnectNotion={onConnectNotion}
+          />
+        ))}
       </div>
     </section>
   );

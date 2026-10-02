@@ -18,7 +18,7 @@
 }
 
 @layer base {
-  @media (prefers-color-scheme: dark) {
+  @media screen and (prefers-color-scheme: dark) {
     :root {
       --color-board: #0f1b2a;
       --color-surface: #16263a;

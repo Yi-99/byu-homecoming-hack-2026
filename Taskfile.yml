@@ -26,7 +26,7 @@ tasks:
     desc: Build and run the backend container in the background
     deps: [build]
     cmds:
-      - docker run --rm -d --name {{.IMAGE}} -p 127.0.0.1:{{.PORT}}:8000 {{.IMAGE}}
+      - docker run --rm -d --name {{.IMAGE}} -p 127.0.0.1:{{.PORT}}:8000 -e NOTION_CLIENT_ID -e NOTION_CLIENT_SECRET -e NOTION_REDIRECT_URI {{.IMAGE}}
 
   logs:
     desc: Follow the backend container logs

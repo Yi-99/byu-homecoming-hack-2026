@@ -19,6 +19,16 @@ cd backend && uv run uvicorn app.main:app --port 8000
 
 Open <http://127.0.0.1:8000>.
 
+Or with [Task](https://taskfile.dev), from the repo root:
+
+```bash
+pnpm --dir frontend install && pnpm --dir frontend build
+task dev
+```
+
+To try it without your own code, upload or ingest the sample repo in
+`examples/stayly/`.
+
 The app has no model access of its own and no server-side API key. Each user
 connects at least one provider in the page with their own key:
 
@@ -33,12 +43,22 @@ needs network access once per language.
 
 ### Frontend development
 
-Run the API and the Vite dev server side by side. Vite proxies `/api` to port 8000.
+Run the API and the Vite dev server side by side in two terminals. Vite proxies
+`/api` to port 8000.
 
 ```bash
-cd backend && uv run uvicorn app.main:app --port 8000 --reload
-cd frontend && pnpm dev
+task dev                    # terminal 1: API with reload on :8000
+cd frontend && pnpm dev     # terminal 2: Vite dev server
 ```
+
+Without Task: `cd backend && uv run uvicorn app.main:app --port 8000 --reload`.
+
+| pnpm command (in `frontend/`) | Does |
+| --- | --- |
+| `pnpm install` | Install frontend dependencies |
+| `pnpm dev` | Vite dev server with hot reload |
+| `pnpm build` | Build to `frontend/dist`, which the backend serves |
+| `pnpm preview` | Serve the built bundle locally |
 
 ### Backend tasks and Docker
 
@@ -46,6 +66,7 @@ With [Task](https://taskfile.dev) installed, from the repo root:
 
 | Command | Does |
 | --- | --- |
+| `task` | List all tasks |
 | `task dev` | Run the backend locally with reload |
 | `task build` | Build the backend Docker image |
 | `task up` | Build and run the container on <http://127.0.0.1:8000> |
@@ -53,6 +74,26 @@ With [Task](https://taskfile.dev) installed, from the repo root:
 | `task down` | Stop the container |
 
 The image holds the API only. Run `pnpm dev` in `frontend/` for the page.
+
+### Notion (optional)
+
+Sending questions to Notion needs a Notion public integration. Without these
+settings the rest of the app works and "Connect Notion" reports that it is not
+set up.
+
+1. Create a public integration at <https://www.notion.so/profile/integrations>
+   with the "Insert content" and "Read content" capabilities.
+2. Add a redirect URI: `http://localhost:8000/api/notion/callback`, or
+   `http://localhost:5173/api/notion/callback` when using the Vite dev server.
+3. Open the app on the same host as the redirect URI (`localhost`, not
+   `127.0.0.1`), or the sign-in check fails.
+4. Set these before starting the backend. `task up` passes them into the container.
+
+```bash
+export NOTION_CLIENT_ID=...
+export NOTION_CLIENT_SECRET=...
+export NOTION_REDIRECT_URI=http://localhost:8000/api/notion/callback
+```
 
 ## How it works
 
@@ -69,6 +110,9 @@ The image holds the API only. Run `pnpm dev` in `frontend/` for the page.
 6. **Generate and compare.** The approved snippets go to every connected model
    in parallel. Results appear in aligned columns, with time and token counts,
    so Part 1 sits next to Part 1.
+7. **Keep.** Save a question in the browser, copy it, download it as Markdown,
+   save it as a PDF through the print dialog, or send it to Notion. Each works
+   with or without the interviewer notes.
 
 Supported languages: Python, JavaScript, TypeScript/TSX, Java, Go, Rust, Ruby, C,
 C++, C#, Kotlin, Swift, PHP, Scala.
@@ -90,9 +134,23 @@ API keys:
   never echo request bodies.
 - A request without a key is rejected. There is no fallback key.
 
+Notion, if you connect it:
+
+- Off by default. The page asks for confirmation before the first sign-in,
+  because it is the one path where a question leaves the browser for a third
+  party.
+- Sign-in is OAuth 2.0 in a pop-up. The server swaps the code for an access
+  token and hands it to the browser in a URL fragment; it does not keep it.
+- The token lives in `sessionStorage` like the model keys. "Disconnect Notion"
+  forgets it. To revoke access entirely, remove the integration in Notion.
+- Each question you send passes through this server to Notion and is stored in
+  your workspace, under the first page you shared at sign-in. Source files and
+  model keys are never sent to Notion.
+
 Other controls:
 
 - Nothing is stored or logged. The server is stateless between requests.
+  Saved questions stay in this browser's `localStorage`.
 - GitHub archives are read from memory and never extracted to disk.
 - Only `https://github.com/owner/repo` URLs are accepted.
 - Limits: 50 MB archive, 200 KB per file, 2000 files.
@@ -122,5 +180,6 @@ backend/app/main.py       API routes, serves the built frontend
 backend/app/ingest.py     folder and GitHub ingest, filters, limits
 backend/app/skeleton.py   tree-sitter outline and secret scrubbing
 backend/app/llm.py        provider calls (Anthropic SDK, OpenAI-style HTTP) and prompts
+backend/app/notion.py     Notion OAuth and page creation
 frontend/src/             React + Vite + Tailwind single-page app, managed with pnpm
 ```

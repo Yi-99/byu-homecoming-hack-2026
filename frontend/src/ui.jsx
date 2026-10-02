@@ -41,7 +41,7 @@ export function Tags({ items, className = "" }) {
 
 export function Code({ children, className = "" }) {
   return (
-    <pre tabIndex={0} className={`max-h-88 overflow-x-auto rounded-md border border-line bg-board px-4 py-3.5 font-mono text-[0.8rem] leading-normal [tab-size:2] ${className}`}>
+    <pre tabIndex={0} className={`max-h-88 overflow-x-auto rounded-md border border-line bg-board px-4 py-3.5 font-mono text-[0.8rem] leading-normal [tab-size:2] print:max-h-none print:whitespace-pre-wrap ${className}`}>
       {children}
     </pre>
   );

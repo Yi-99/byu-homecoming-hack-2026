@@ -219,3 +219,6 @@ __marimo__/
 
 # Frontend
 node_modules/
+
+# Cloudflare
+*/.wrangler/**

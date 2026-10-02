@@ -93,22 +93,66 @@ export const asJson = (body) => ({
 
 // keys live in sessionStorage: gone when the tab closes, never sent anywhere but our own server
 const slot = (id) => `homegrown.llm.${id}`;
+const NOTION = "homegrown.notion";
 
-export function storedLlm(id) {
+function read(key) {
   try {
-    return JSON.parse(sessionStorage.getItem(slot(id)));
+    return JSON.parse(sessionStorage.getItem(key));
   } catch {
     return null;
   }
 }
 
-export function storeLlm(id, value) {
+function write(key, value) {
   try {
-    if (value) sessionStorage.setItem(slot(id), JSON.stringify(value));
-    else sessionStorage.removeItem(slot(id));
+    if (value) sessionStorage.setItem(key, JSON.stringify(value));
+    else sessionStorage.removeItem(key);
   } catch {
-    // storage blocked: the key just won't survive a reload
+    // storage blocked: the value just won't survive a reload
   }
+}
+
+export const storedLlm = (id) => read(slot(id));
+export const storeLlm = (id, value) => write(slot(id), value);
+export const storedNotion = () => read(NOTION);
+export const storeNotion = (value) => write(NOTION, value);
+
+export const NOTION_WARNING = [
+  "Connecting Notion steps outside this app's privacy guard rails.",
+  "",
+  "Each question you send to Notion passes through this app's server and is stored in your Notion workspace. Questions are built from functions in your code.",
+  "",
+  "Your source files and model API keys are still never sent. Nothing goes to Notion unless you press Send to Notion.",
+  "",
+  "Connect Notion?",
+].join("\n");
+
+// runs in the sign-in pop-up: hands the token to the tab that opened it, then closes
+export function finishNotionLogin() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const token = params.get("notion_token");
+  const error = params.get("notion_error");
+  if (!token && !error) return "";
+  history.replaceState(null, "", location.pathname);
+  if (error) return `${error} You can close this window.`;
+  const channel = new BroadcastChannel(NOTION);
+  channel.postMessage({ token, workspace: params.get("notion_workspace") || "Notion" });
+  channel.close();
+  window.close();
+  return "Notion is connected. You can close this window.";
+}
+
+export function listenForNotion(onConnected) {
+  const channel = new BroadcastChannel(NOTION);
+  channel.onmessage = (event) => onConnected(event.data);
+  return () => channel.close();
+}
+
+export function download(title, text) {
+  const name = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "question";
+  const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+  Object.assign(document.createElement("a"), { href: url, download: `${name}.md` }).click();
+  URL.revokeObjectURL(url);
 }
 
 const SAVED = "homegrown.saved";

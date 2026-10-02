@@ -1,15 +1,17 @@
 import json
+import secrets
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, SecretStr, ValidationError
 
-from . import llm
+from . import llm, notion
 from .ingest import MAX_FILES, IngestError, collect, fetch_github, zip_entries
 from .skeleton import CODE_LANGS, extract, scrub, select, skeleton_line
 
@@ -18,6 +20,7 @@ app = FastAPI(title="Interview question generator", docs_url=None, redoc_url=Non
 MAX_TOPICS = 8
 MAX_TOPIC_LEN = 40
 MAX_SNIPPETS = 3
+STATE_COOKIE = "notion_state"
 
 Provider = Literal["anthropic", "openai", "xai"]
 Key = SecretStr
@@ -148,6 +151,51 @@ async def generate(body: GenerateBody):
     snippets = [{"name": s.name, "code": scrub(s.code)} for s in body.snippets]
     question, usage = await _llm(llm.generate(body.llm.who(), topics, snippets))
     return {"question": question, "usage": usage}
+
+
+class NotionPage(BaseModel):
+    token: Key = Field(min_length=8, max_length=400)
+    markdown: str = Field(min_length=1, max_length=60_000)
+
+
+@app.get("/api/notion/login")
+async def notion_login():
+    if not notion.configured():
+        raise HTTPException(503, "Notion is not set up on this server. See the README for the three settings it needs.")
+    state = secrets.token_urlsafe(24)
+    response = RedirectResponse(notion.authorize_url(state))
+    response.set_cookie(
+        STATE_COOKIE, state, max_age=600, httponly=True, samesite="lax", secure=notion.secure(), path="/api/notion"
+    )
+    return response
+
+
+@app.get("/api/notion/callback")
+async def notion_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    expected = request.cookies.get(STATE_COOKIE, "")
+    if error:
+        result = {"notion_error": f"Notion did not connect ({error[:80]})."}
+    elif not code or not expected or not secrets.compare_digest(state.encode(), expected.encode()):
+        result = {"notion_error": "The Notion sign-in could not be verified. Try again."}
+    else:
+        try:
+            token, workspace = await notion.exchange(code)
+            result = {"notion_token": token, "notion_workspace": workspace}
+        except notion.NotionError as e:
+            result = {"notion_error": str(e)}
+    # the token rides in the URL fragment, which browsers never send to a server
+    response = RedirectResponse("/#" + urlencode(result), 303)
+    response.delete_cookie(STATE_COOKIE, path="/api/notion")
+    return response
+
+
+@app.post("/api/notion/pages")
+async def notion_page(body: NotionPage):
+    try:
+        url = await notion.save(body.token.get_secret_value(), body.markdown)
+    except notion.NotionError as e:
+        raise HTTPException(e.status, str(e))
+    return {"url": url}
 
 
 DIST = Path(__file__).parents[2] / "frontend" / "dist"

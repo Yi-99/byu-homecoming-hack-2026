@@ -3,14 +3,17 @@ import Candidates from "./Candidates.jsx";
 import Compare from "./Compare.jsx";
 import Providers from "./Providers.jsx";
 import SourceForm from "./SourceForm.jsx";
-import { PROVIDERS, asJson, labelOf, loadSaved, post, storeSaved } from "./lib.js";
+import {
+  NOTION_WARNING, PROVIDERS, asJson, labelOf, listenForNotion, loadSaved, post, storeNotion, storeSaved, storedNotion,
+} from "./lib.js";
 import { quietButton } from "./ui.jsx";
 
-function LedgerRow({ label, idle, sent }) {
+function LedgerRow({ label, idle, sent, children }) {
   return (
     <div>
       <dt className="font-semibold">{label}</dt>
       <dd className={`mt-0.5 ${sent ? "font-semibold text-ok" : "text-muted"}`}>{sent || idle}</dd>
+      {children && <dd className="mt-2">{children}</dd>}
     </div>
   );
 }
@@ -37,6 +40,23 @@ export default function App() {
   const epoch = useRef(0);
   const [saved, setSaved] = useState(loadSaved);
   const [viewing, setViewing] = useState(null);
+  const [notion, setNotion] = useState(storedNotion);
+
+  useEffect(() => listenForNotion((connection) => {
+    storeNotion(connection);
+    setNotion(connection);
+  }), []);
+
+  function connectNotion() {
+    if (!confirm(NOTION_WARNING)) return;
+    const popup = window.open("/api/notion/login", "homegrown-notion", "popup,width=600,height=760");
+    if (!popup) alert("Allow pop-ups for this page, then connect Notion again.");
+  }
+
+  function disconnectNotion() {
+    storeNotion(null);
+    setNotion(null);
+  }
 
   function updateSaved(list) {
     setSaved(list);
@@ -102,7 +122,7 @@ export default function App() {
 
   return (
     <>
-      <div className="mx-auto grid max-w-[68rem] grid-cols-[minmax(0,1fr)] gap-x-14 gap-y-8 px-4 pt-8 pb-10 md:px-6 md:pt-12 lg:grid-cols-[minmax(0,44rem)_17rem] lg:gap-y-10">
+      <div className="mx-auto grid max-w-[68rem] grid-cols-[minmax(0,1fr)] gap-x-14 gap-y-8 px-4 pt-8 pb-10 md:px-6 md:pt-12 lg:grid-cols-[minmax(0,44rem)_17rem] lg:gap-y-10 print:hidden">
         <header className="max-w-[44rem] lg:col-span-2">
           <p className="mb-6 font-bold tracking-tight lg:mb-10">Homegrown</p>
           <h1 className="text-[clamp(2.1rem,5.2vw,3.4rem)] leading-[1.03] font-extrabold tracking-[-0.035em] text-balance">
@@ -132,6 +152,15 @@ export default function App() {
               idle="None connected."
               sent={connected.length > 0 && `${connected.map((c) => labelOf(c.provider)).join(", ")}. Kept in this tab, forwarded only to that provider.`}
             />
+            <LedgerRow
+              label="Notion"
+              idle="Not connected. Optional, and outside the guard rails above."
+              sent={notion && `Connected to ${notion.workspace}. Each question you send passes through this server and is stored in Notion.`}
+            >
+              <button type="button" className={`${quietButton} px-2.5 py-1`} onClick={notion ? disconnectNotion : connectNotion}>
+                {notion ? "Disconnect Notion" : "Connect Notion"}
+              </button>
+            </LedgerRow>
           </dl>
           <h2 className="mt-8 mb-3 text-[0.95rem] font-bold">Saved problems</h2>
           {saved.length === 0 ? (
@@ -166,10 +195,19 @@ export default function App() {
       </div>
 
       {viewing ? (
-        <Compare results={{ [viewing.provider]: viewing }} onClose={() => setViewing(null)} />
+        <Compare results={{ [viewing.provider]: viewing }} notion={notion} onClose={() => setViewing(null)} onConnectNotion={connectNotion} />
       ) : (
         sentTo.length > 0 && (
-          <Compare ref={compareRef} results={results} busy={busy} onRegenerate={() => generate(snippets)} onRetry={retry} onSave={save} />
+          <Compare
+            ref={compareRef}
+            results={results}
+            busy={busy}
+            notion={notion}
+            onRegenerate={() => generate(snippets)}
+            onRetry={retry}
+            onSave={save}
+            onConnectNotion={connectNotion}
+          />
         )
       )}
     </>
