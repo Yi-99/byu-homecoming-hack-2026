@@ -1,5 +1,6 @@
 {
   "name": "makecode",
   "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" }
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "vars": { "NOTION_REDIRECT_URI": "https://makecode.ylim-8299.workers.dev/api/notion/callback" }
 }
