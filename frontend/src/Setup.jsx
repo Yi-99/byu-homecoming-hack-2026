@@ -8,7 +8,7 @@ import Topics from "./Topics.jsx";
 import {
   MAX_SNIPPETS, MAX_TOPICS, NOTION_WARNING, PROVIDERS, asJson, labelOf, listenForNotion, post, storeNotion, storedNotion,
 } from "./lib.js";
-import { Code, Icon, IconButton, Modal, btn, ghostBtn, primaryBtn } from "./ui.jsx";
+import { Code, ErrorNote, Icon, IconButton, Modal, btn, ghostBtn, primaryBtn } from "./ui.jsx";
 
 const STEPS = ["Connect", "Codebase", "Topics", "Review", "Choose"];
 const pane = "flex h-full min-w-0 flex-[0_0_100%] flex-col justify-start gap-6 overflow-auto px-6 py-10 md:px-16";
@@ -72,6 +72,8 @@ export default function Setup({ saved, updateSaved, onExit }) {
   const [codeFn, setCodeFn] = useState(null);
   const [approved, setApproved] = useState(null);
   const [nudge, setNudge] = useState(0);
+  const [notionAsk, setNotionAsk] = useState(false);
+  const [popupBlocked, setPopupBlocked] = useState(false);
   const epoch = useRef(0);
   const abort = useRef(null);
 
@@ -80,10 +82,19 @@ export default function Setup({ saved, updateSaved, onExit }) {
     setNotion(connection);
   }), []);
 
+  // an in-page dialog, not confirm(): the pop-up must open from a click inside the page
   function connectNotion() {
-    if (!confirm(NOTION_WARNING)) return;
+    setPopupBlocked(false);
+    setNotionAsk(true);
+  }
+
+  function openNotion() {
     const popup = window.open("/api/notion/login", "homegrown-notion", "popup,width=600,height=760");
-    if (!popup) alert("Allow pop-ups for this page, then connect Notion again.");
+    setPopupBlocked(!popup);
+    if (popup) {
+      popup.focus();
+      setNotionAsk(false);
+    }
   }
 
   function disconnectNotion() {
@@ -428,6 +439,20 @@ export default function Setup({ saved, updateSaved, onExit }) {
             <IconButton icon="x" label="Close" onClick={() => setCodeFn(null)} end />
           </div>
           <Code className="max-h-[440px] px-5 py-4 text-[13px]">{codeFn.code_scrubbed}</Code>
+        </Modal>
+      )}
+
+      {notionAsk && (
+        <Modal label="Connect Notion" width={480} onClose={() => setNotionAsk(false)}>
+          <div className="flex flex-col gap-3.5 p-7">
+            <h3 className="m-0 text-[28px]">Connect Notion?</h3>
+            <p className="m-0 text-[15px] leading-relaxed whitespace-pre-line text-neutral-700">{NOTION_WARNING.replace(/\n*Connect Notion\?$/, "")}</p>
+            <ErrorNote>{popupBlocked && "Allow pop-ups for this page, then connect Notion again."}</ErrorNote>
+            <div className="flex justify-end gap-2.5 pt-1.5">
+              <button type="button" className={`${btn} h-[42px] min-w-[100px]`} onClick={() => setNotionAsk(false)}>Cancel</button>
+              <button type="button" className={`${primaryBtn} h-[42px] min-w-[150px]`} onClick={openNotion}>Connect Notion</button>
+            </div>
+          </div>
         </Modal>
       )}
 
