@@ -22,20 +22,8 @@
 }
 
 @layer base {
-  @media screen and (prefers-color-scheme: dark) {
-    :root {
-      --color-board: #16191c;
-      --color-surface: #1d2125;
-      --color-ink: #eef0f2;
-      --color-muted: #a6a9ad;
-      --color-line: #3a3f45;
-      --color-marker: #94bce3;
-      --color-on-marker: #1d2d3d;
-      --color-ok: #62d6a8;
-      --color-bad: #ff9096;
-      --color-highlight: #2c455d;
-      --color-paper: #1f2328;
-    }
+  :root {
+    color-scheme: light;
   }
 
   h1, h2, h3 {
