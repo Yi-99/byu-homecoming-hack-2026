@@ -40,6 +40,20 @@ cd backend && uv run uvicorn app.main:app --port 8000 --reload
 cd frontend && pnpm dev
 ```
 
+### Backend tasks and Docker
+
+With [Task](https://taskfile.dev) installed, from the repo root:
+
+| Command | Does |
+| --- | --- |
+| `task dev` | Run the backend locally with reload |
+| `task build` | Build the backend Docker image |
+| `task up` | Build and run the container on <http://127.0.0.1:8000> |
+| `task logs` | Follow the container logs |
+| `task down` | Stop the container |
+
+The image holds the API only. Run `pnpm dev` in `frontend/` for the page.
+
 ## How it works
 
 1. **Connect.** Paste a key for one or more providers. The app lists that

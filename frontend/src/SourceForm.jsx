@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MAX_TOPICS, TOPICS, filterFolder, labelOf, post } from "./lib.js";
+import { MAX_TOPICS, TOPICS, filterFolder, labelOf, post, readDropped } from "./lib.js";
 import { ErrorNote, Step, peerFocus, primaryButton, quietButton } from "./ui.jsx";
 
 const SOURCES = [
@@ -18,14 +18,31 @@ export default function SourceForm({ ranker, onAnalyzed }) {
   const [custom, setCustom] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
+
+  function report(kept, seen) {
+    setFiles(kept);
+    setFolderStatus(seen
+      ? `${kept.length.toLocaleString()} source files ready, ${(seen - kept.length).toLocaleString()} skipped.`
+      : "No files found in that folder.");
+  }
 
   function pickFolder(event) {
     const all = [...event.target.files];
-    const kept = filterFolder(all);
-    setFiles(kept);
-    setFolderStatus(all.length
-      ? `${kept.length.toLocaleString()} source files ready, ${(all.length - kept.length).toLocaleString()} skipped.`
-      : "No files found in that folder.");
+    report(filterFolder(all), all.length);
+  }
+
+  async function dropFolder(event) {
+    event.preventDefault();
+    setDragging(false);
+    setFolderStatus("Reading dropped folder…");
+    try {
+      const { kept, seen } = await readDropped(event.dataTransfer);
+      if (seen) report(kept, seen);
+      else setFolderStatus("Drop a folder, not individual files.");
+    } catch {
+      setFolderStatus("Could not read that folder. Use Choose folder instead.");
+    }
   }
 
   function toggle(topic) {
@@ -82,9 +99,20 @@ export default function SourceForm({ ranker, onAnalyzed }) {
         </fieldset>
 
         {source === "folder" ? (
-          <div className="mt-5">
+          <div
+            className={`mt-5 rounded-xl border border-dashed px-5 py-6 text-center transition-colors ${dragging ? "border-marker bg-highlight" : "border-muted"}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false);
+            }}
+            onDrop={dropFolder}
+          >
             <input id="folder-input" className="peer sr-only" type="file" webkitdirectory="" multiple onChange={pickFolder} />
-            <label htmlFor="folder-input" className={`inline-block cursor-pointer rounded-lg border border-dashed border-muted px-4 py-2.5 font-semibold transition-colors hover:border-marker hover:text-marker ${peerFocus}`}>Choose folder</label>
+            <p className="mb-3 font-semibold">Drag a folder here, or</p>
+            <label htmlFor="folder-input" className={`inline-block cursor-pointer rounded-lg border border-line bg-surface px-4 py-2.5 font-semibold transition-colors hover:border-marker hover:text-marker ${peerFocus}`}>Choose folder</label>
             <p className="mt-2.5 text-sm text-muted" role="status">{folderStatus}</p>
           </div>
         ) : (

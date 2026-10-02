@@ -45,8 +45,9 @@ function Part({ part, index }) {
   );
 }
 
-function Column({ id, result, onRetry }) {
+function Column({ id, result, onRetry, onSave }) {
   const [copied, setCopied] = useState("");
+  const [saved, setSaved] = useState(false);
   const { status, model, question, usage, seconds, error } = result;
   const byline = `${labelOf(id)} ${model}`;
 
@@ -72,6 +73,16 @@ function Column({ id, result, onRetry }) {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button type="button" className={quietButton} onClick={() => copy(false)}>Copy candidate version</button>
               <button type="button" className={quietButton} onClick={() => copy(true)}>Copy with interviewer notes</button>
+              {onSave && (
+                <button
+                  type="button"
+                  className={quietButton}
+                  disabled={saved}
+                  onClick={() => { onSave(id, result); setSaved(true); }}
+                >
+                  {saved ? "Saved" : "Save"}
+                </button>
+              )}
             </div>
             <p className="mt-1.5 min-h-5 text-sm text-muted" role="status">{copied}</p>
           </>
@@ -109,7 +120,7 @@ function Column({ id, result, onRetry }) {
   );
 }
 
-export default function Compare({ results, busy, onRegenerate, onRetry, ...rest }) {
+export default function Compare({ results, busy, onRegenerate, onRetry, onSave, onClose, ...rest }) {
   const ids = Object.keys(results);
   const many = ids.length > 1;
 
@@ -117,16 +128,20 @@ export default function Compare({ results, busy, onRegenerate, onRetry, ...rest 
     <section className="mx-auto max-w-[100rem] scroll-mt-4 px-4 pb-16 md:px-6 md:pb-24" aria-labelledby="step4-title" {...rest}>
       <h2 id="step4-title" className="mb-5 flex items-baseline gap-3 text-xl font-bold tracking-tight">
         <span className="size-7 flex-none rounded-full bg-ink text-center text-sm leading-7 text-surface">4</span>
-        {many ? "Compare the questions" : "Review the question"}
+        {onClose ? "Saved question" : many ? "Compare the questions" : "Review the question"}
       </h2>
       <div className="mb-6 flex max-w-[44rem] flex-col items-start gap-4">
         <Note>Example outputs were worked out by each model, not run as code. Check them before you use a question in an interview.</Note>
-        <button type="button" className={quietButton} onClick={onRegenerate} disabled={busy} aria-busy={busy}>
-          {many ? "Write new versions with every model" : "Write another version"}
-        </button>
+        {onClose ? (
+          <button type="button" className={quietButton} onClick={onClose}>Close saved question</button>
+        ) : (
+          <button type="button" className={quietButton} onClick={onRegenerate} disabled={busy} aria-busy={busy}>
+            {many ? "Write new versions with every model" : "Write another version"}
+          </button>
+        )}
       </div>
       <div className={`grid grid-cols-[minmax(0,1fr)] gap-x-5 ${COLUMNS[ids.length]}`}>
-        {ids.map((id) => <Column key={id} id={id} result={results[id]} onRetry={onRetry} />)}
+        {ids.map((id) => <Column key={id + (results[id].question?.title ?? "")} id={id} result={results[id]} onRetry={onRetry} onSave={onSave} />)}
       </div>
     </section>
   );

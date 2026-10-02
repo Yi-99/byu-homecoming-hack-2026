@@ -3,7 +3,8 @@ import Candidates from "./Candidates.jsx";
 import Compare from "./Compare.jsx";
 import Providers from "./Providers.jsx";
 import SourceForm from "./SourceForm.jsx";
-import { PROVIDERS, asJson, labelOf, post } from "./lib.js";
+import { PROVIDERS, asJson, labelOf, loadSaved, post, storeSaved } from "./lib.js";
+import { quietButton } from "./ui.jsx";
 
 function LedgerRow({ label, idle, sent }) {
   return (
@@ -34,6 +35,23 @@ export default function App() {
   const candidatesRef = useScrollTo(analysis);
   const compareRef = useScrollTo(snippets);
   const epoch = useRef(0);
+  const [saved, setSaved] = useState(loadSaved);
+  const [viewing, setViewing] = useState(null);
+
+  function updateSaved(list) {
+    setSaved(list);
+    storeSaved(list);
+  }
+
+  function save(provider, r) {
+    const entry = { id: Date.now(), provider, model: r.model, question: r.question, usage: r.usage, seconds: r.seconds, status: "done" };
+    updateSaved([entry, ...saved]);
+  }
+
+  function remove(id) {
+    if (viewing?.id === id) setViewing(null);
+    updateSaved(saved.filter((s) => s.id !== id));
+  }
 
   const connected = PROVIDERS
     .filter((p) => llms[p.id]?.status === "connected")
@@ -115,6 +133,27 @@ export default function App() {
               sent={connected.length > 0 && `${connected.map((c) => labelOf(c.provider)).join(", ")}. Kept in this tab, forwarded only to that provider.`}
             />
           </dl>
+          <h2 className="mt-8 mb-3 text-[0.95rem] font-bold">Saved problems</h2>
+          {saved.length === 0 ? (
+            <p className="text-[0.85rem] text-muted">None yet. Save a generated question to keep it here.</p>
+          ) : (
+            <ul className="grid gap-3 text-[0.85rem]">
+              {saved.map((s) => (
+                <li key={s.id} className="flex items-start justify-between gap-2">
+                  <button
+                    type="button"
+                    className={`cursor-pointer text-left hover:text-marker ${viewing?.id === s.id ? "font-bold" : "font-semibold"}`}
+                    aria-pressed={viewing?.id === s.id}
+                    onClick={() => setViewing(s)}
+                  >
+                    {s.question.title}
+                    <span className="block font-normal text-muted">{labelOf(s.provider)} {s.model}</span>
+                  </button>
+                  <button type="button" className={`${quietButton} px-2 py-0.5`} aria-label={`Delete ${s.question.title}`} onClick={() => remove(s.id)}>×</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </aside>
 
         <main className="grid grid-cols-[minmax(0,1fr)] content-start gap-6 lg:col-start-1 lg:row-start-2">
@@ -126,8 +165,12 @@ export default function App() {
         </main>
       </div>
 
-      {sentTo.length > 0 && (
-        <Compare ref={compareRef} results={results} busy={busy} onRegenerate={() => generate(snippets)} onRetry={retry} />
+      {viewing ? (
+        <Compare results={{ [viewing.provider]: viewing }} onClose={() => setViewing(null)} />
+      ) : (
+        sentTo.length > 0 && (
+          <Compare ref={compareRef} results={results} busy={busy} onRegenerate={() => generate(snippets)} onRetry={retry} onSave={save} />
+        )
       )}
     </>
   );

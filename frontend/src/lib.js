@@ -1,6 +1,6 @@
 export const TOPICS = [
   "arrays", "hash map", "two pointers", "sliding window", "stack", "queue", "heap",
-  "linked list", "tree", "graph", "dynamic programming", "binary search", "trie",
+  "linked list", "tree", "graph", "dfs", "bfs", "dynamic programming", "binary search", "trie",
   "union-find", "greedy", "backtracking", "intervals", "sorting",
 ];
 export const PROVIDERS = [
@@ -44,6 +44,34 @@ export function filterFolder(fileList) {
   return kept.slice(0, MAX_FILES);
 }
 
+const readBatch = (reader) => new Promise((ok, fail) => reader.readEntries(ok, fail));
+const fileOf = (entry) => new Promise((ok, fail) => entry.file(ok, fail));
+
+async function walkDir(dir, prefix, out) {
+  const reader = dir.createReader();
+  for (let batch = await readBatch(reader); batch.length; batch = await readBatch(reader)) {
+    for (const child of batch) {
+      if (out.kept.length >= MAX_FILES) return;
+      const path = prefix + child.name;
+      if (child.isFile) {
+        out.seen++;
+        const file = await fileOf(child);
+        if (wanted(path, file.size)) out.kept.push({ file, path });
+      } else if (!SKIP_DIRS.has(child.name)) {
+        await walkDir(child, `${path}/`, out);
+      }
+    }
+  }
+}
+
+// entries must be grabbed before the first await: the browser empties dataTransfer after the event
+export async function readDropped(dataTransfer) {
+  const roots = [...dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter((e) => e?.isDirectory);
+  const out = { kept: [], seen: 0 };
+  for (const root of roots) await walkDir(root, "", out);
+  return out;
+}
+
 export async function post(url, options) {
   let response;
   try {
@@ -83,7 +111,25 @@ export function storeLlm(id, value) {
   }
 }
 
-export const partsOf = (q) => [q.part1, q.part2, q.part3];
+const SAVED = "homegrown.saved";
+
+export function loadSaved() {
+  try {
+    return JSON.parse(localStorage.getItem(SAVED)) || [];
+  } catch {
+    return [];
+  }
+}
+
+export function storeSaved(list) {
+  try {
+    localStorage.setItem(SAVED, JSON.stringify(list));
+  } catch {
+    // storage blocked: saves last until reload
+  }
+}
+
+export const partsOf =(q) => [q.part1, q.part2, q.part3];
 
 export function toMarkdown(q, withNotes, byline) {
   const out = [`# ${q.title}`, "", q.story, ""];
