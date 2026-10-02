@@ -6,7 +6,7 @@ import SourceForm from "./SourceForm.jsx";
 import {
   NOTION_WARNING, PROVIDERS, asJson, labelOf, listenForNotion, loadSaved, post, storeNotion, storeSaved, storedNotion,
 } from "./lib.js";
-import { quietButton } from "./ui.jsx";
+import { ErrorNote, quietButton } from "./ui.jsx";
 
 function LedgerRow({ label, idle, sent, children }) {
   return (
@@ -47,10 +47,18 @@ export default function App() {
     setNotion(connection);
   }), []);
 
+  const notionDialog = useRef(null);
+  const [popupBlocked, setPopupBlocked] = useState(false);
+
   function connectNotion() {
-    if (!confirm(NOTION_WARNING)) return;
+    notionDialog.current.showModal();
+  }
+
+  function openNotion(event) {
     const popup = window.open("/api/notion/login", "homegrown-notion", "popup,width=600,height=760");
-    if (!popup) alert("Allow pop-ups for this page, then connect Notion again.");
+    setPopupBlocked(!popup);
+    if (popup) popup.focus();
+    else event.preventDefault();
   }
 
   function disconnectNotion() {
@@ -210,6 +218,15 @@ export default function App() {
           />
         )
       )}
+
+      <dialog ref={notionDialog} className="m-auto max-w-md rounded-[14px] border border-line bg-surface p-6 text-ink backdrop:bg-black/40 print:hidden">
+        <p className="text-sm whitespace-pre-line">{NOTION_WARNING}</p>
+        <ErrorNote>{popupBlocked && "Allow pop-ups for this page, then connect Notion again."}</ErrorNote>
+        <form method="dialog" className="mt-5 flex justify-end gap-2">
+          <button className={quietButton}>Cancel</button>
+          <button className={quietButton} onClick={openNotion}>Connect Notion</button>
+        </form>
+      </dialog>
     </>
   );
 }
